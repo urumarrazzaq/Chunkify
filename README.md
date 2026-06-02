@@ -1,31 +1,31 @@
-# ChunkFlow
+# Chunkify
 
-A clean, minimal desktop tool for splitting large files into chunks and merging them back together.
+A small, modern desktop utility to split large files into numbered chunks and reassemble them.
 
-## Features
+## Key features
 
-- Split a single file into numbered chunk files.
-- Merge selected chunk files back into a single file.
-- Auto split all large files in a directory.
-- Auto merge detected chunk groups in a directory.
-- Output log panel with detailed results and copy-to-clipboard support.
-- Light/Dark theme toggle with a simple minimal UI.
+- Split a single file into `_partNNN` chunk files.
+- Merge selected chunk files back into one file (sorted by part number).
+- Batch "Auto Split" and "Auto Merge" operations across directories.
+- Live operation output panel with copy-to-clipboard.
+- Light / Dark theme and responsive layout.
 
-## Getting Started
-
-### Prerequisites
+## Requirements
 
 - Python 3.11+ (3.14 tested)
 - PyQt5
 
-### Install dependencies
+## Install dependencies
+
+Open PowerShell and run:
 
 ```powershell
-cd "d:\PythonScripts\GitTools\UAssetChunkify\Chunckify With UI"
-python -m pip install pyqt5
+python -m pip install pyqt5 pyinstaller
 ```
 
-### Run the app
+## Run the app (development)
+
+From the project folder:
 
 ```powershell
 python .\main.py
@@ -33,55 +33,62 @@ python .\main.py
 
 ## Build a Windows executable
 
-This project already includes a `main.spec` file.
+The project includes `main.spec` configured to embed `favicon.ico` and produce a single EXE named `Chunkify.exe`.
+
+Build with PyInstaller:
 
 ```powershell
-cd "d:\PythonScripts\GitTools\UAssetChunkify\Chunckify With UI"
-python -m pip install pyinstaller
 python -m PyInstaller main.spec
 ```
 
-After building, the generated executable is available in the `dist` folder as `main.exe`.
+When the build completes, the standalone executable will be in:
 
-## Project Structure
+```
+dist\Chunkify.exe
+```
 
-- `main.py` — application entry point
-- `ui.py` — PyQt5 user interface logic
-- `core.py` — file chunking and merging functionality
-- `main.spec` — PyInstaller build configuration
-- `favicon.ico` — application icon asset
+Notes:
+- The spec bundles `favicon.ico` so the running window and the exe contain the app icon.
 
-## How to Use
+## Project layout
 
-### Split File
+- `main.py` — application entry point and resource loader
+- `ui.py` — PyQt5 UI and layout
+- `core.py` — file chunking/merging logic
+- `main.spec` — PyInstaller spec used to build the EXE
+- `favicon.ico` — app icon (embedded into the EXE)
+
+## Quick usage
+
+Split a file:
+
 1. Open the `Split File` tab.
-2. Choose a source file.
-3. Optionally choose an output directory.
-4. Set the chunk size in MB.
-5. Click `Split File`.
+2. Drag a file into the drop area or click `Browse`.
+3. (Optional) Set output directory and chunk size.
+4. Click `Split File`.
 
-### Merge Files
+Merge chunks:
+
 1. Open the `Merge Files` tab.
-2. Enter or browse for the output file path.
-3. Add chunk files to merge.
+2. Add chunk files (drag-drop or `Add Chunks...`).
+3. Set the output filename and directory.
 4. Click `Merge Files`.
 
-### Auto Operations
-1. Open the `Auto Operations` tab.
-2. Choose a directory.
-3. Optionally choose an output directory.
-4. Use `Auto Split Large Files` or `Auto Merge Chunks`.
+Auto operations:
 
-## Notes
+1. Open `Auto Operations` tab.
+2. Select a directory (drag-drop supported).
+3. Use `Auto Split Large Files` or `Auto Merge Chunks`.
 
-- The app preserves original file structure when an output directory is provided.
-- Chunks are named using a `_partNNN` suffix, and merge order is determined by that number.
-- Successful operations display a simple popup, and full details appear in the output panel.
+## Troubleshooting
 
-## Suggestions
+- If the GUI fails to start, ensure `PyQt5` is installed and you are using a compatible Python version.
+- If the exe does not show the icon, rebuild with `python -m PyInstaller main.spec` — the spec includes the icon as bundled data.
 
-If you want, I can also add:
+---
 
-- drag-and-drop support for file selection
-- an option to set a custom chunk filename pattern
-- a `Clear output` button or recent operation history
+If you'd like, I can also:
+
+- Add a short GIF or screenshots showing the UI flow.
+- Create a `requirements.txt` and a simple install script.
+- Add CLI helpers for scripted batch operations.

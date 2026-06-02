@@ -1,12 +1,18 @@
 import os
+import sys
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QLabel, QPushButton, QFileDialog, QListWidget, QMessageBox,
                              QTabWidget, QProgressBar, QLineEdit, QSpinBox, QGroupBox,
                              QCheckBox, QScrollArea, QFrame, QSizePolicy, QComboBox,
-                             QPlainTextEdit)
+                             QSplitter, QPlainTextEdit)
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont, QIcon
 from core import FileProcessor, CHUNK_SIZE
+
+def resource_path(relative_path):
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.abspath(os.path.dirname(__file__)), relative_path)
 
 class WorkerThread(QThread):
     progress_updated = pyqtSignal(int)
@@ -100,24 +106,51 @@ class WorkerThread(QThread):
         except Exception as e:
             self.operation_completed.emit(f"Error: {str(e)}", False)
 
+class DropArea(QLabel):
+    fileDropped = pyqtSignal(list)
+
+    def __init__(self, title, description, parent=None):
+        super().__init__(parent)
+        self.setText(f"<b>{title}</b><br><span>{description}</span>")
+        self.setAlignment(Qt.AlignCenter)
+        self.setWordWrap(True)
+        self.setObjectName("DropArea")
+        self.setMinimumHeight(90)
+        self.setAcceptDrops(True)
+        self.setStyleSheet("QLabel { padding: 10px; }")
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        paths = [url.toLocalFile() for url in event.mimeData().urls() if url.isLocalFile()]
+        if paths:
+            self.fileDropped.emit(paths)
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
 class FileChunkerUI(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("File Chunker")
-        self.setGeometry(100, 100, 780, 560)
+        self.setGeometry(100, 100, 720, 500)
         self.setMinimumSize(520, 420)
-        self.setWindowIcon(QIcon.fromTheme("document-open"))
+        self.setWindowIcon(QIcon(resource_path("favicon.ico")))
         self.path_rows = []
         self.action_rows = []
         self.compact_layout = None
-        self.theme_name = "light"
+        self.theme_name = "dark"
         
         # Central widget and main layout
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         self.main_layout = QVBoxLayout(self.central_widget)
-        self.main_layout.setContentsMargins(18, 16, 18, 14)
-        self.main_layout.setSpacing(12)
+        self.main_layout.setContentsMargins(14, 12, 14, 12)
+        self.main_layout.setSpacing(10)
         
         # App header
         self.add_header()
@@ -126,14 +159,19 @@ class FileChunkerUI(QMainWindow):
         self.tabs = QTabWidget()
         self.tabs.setUsesScrollButtons(True)
         self.tabs.setElideMode(Qt.ElideRight)
-        self.main_layout.addWidget(self.tabs)
-        
+
+        self.main_splitter = QSplitter(Qt.Vertical)
+        self.main_splitter.addWidget(self.tabs)
+        self.main_splitter.setStretchFactor(0, 4)
+
         # Add tabs
         self.create_split_tab()
         self.create_merge_tab()
         self.create_auto_tab()
 
-        self.add_output_panel()
+        self.main_splitter.addWidget(self.create_output_panel())
+        self.main_splitter.setStretchFactor(1, 2)
+        self.main_layout.addWidget(self.main_splitter)
         
         # Status bar
         self.status_bar = self.statusBar()
@@ -150,34 +188,36 @@ class FileChunkerUI(QMainWindow):
         self.update_responsive_layout()
     
     def add_header(self):
-        title = QLabel("File Chunker")
+        title = QLabel("Chunkify - File Splitter & Merger")
         title.setObjectName("HeaderTitle")
         title.setAlignment(Qt.AlignLeft)
         title_font = QFont()
-        title_font.setPointSize(18)
+        title_font.setPointSize(14)
         title_font.setBold(True)
         title.setFont(title_font)
 
-        subtitle = QLabel("Split and merge files with a clean, minimal interface.")
+        subtitle = QLabel("Split and merge files effortlessly with our intuitive tool.")
         subtitle.setObjectName("HeaderSubtitle")
         subtitle.setAlignment(Qt.AlignLeft)
         subtitle_font = QFont()
-        subtitle_font.setPointSize(9)
+        subtitle_font.setPointSize(8)
         subtitle.setFont(subtitle_font)
 
         title_layout = QVBoxLayout()
-        title_layout.setSpacing(2)
+        title_layout.setSpacing(1)
         title_layout.addWidget(title)
         title_layout.addWidget(subtitle)
 
         self.theme_select = QComboBox()
         self.theme_select.setObjectName("ThemeSelect")
         self.theme_select.addItems(["Light", "Dark"])
-        self.theme_select.setFixedWidth(110)
+        self.theme_select.setFixedWidth(100)
         self.theme_select.currentTextChanged.connect(self.change_theme)
+        self.theme_select.setCurrentText("Dark")
 
         header_layout = QHBoxLayout()
-        header_layout.setSpacing(12)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(8)
         header_layout.addLayout(title_layout, 1)
         header_layout.addWidget(QLabel("Theme:"))
         header_layout.addWidget(self.theme_select)
@@ -186,7 +226,38 @@ class FileChunkerUI(QMainWindow):
         header_widget.setLayout(header_layout)
         self.main_layout.addWidget(header_widget)
 
-    def add_output_panel(self):
+    def build_tab_tile(self, title, description, icon):
+        tile = QFrame()
+        tile.setObjectName("TabTile")
+        tile.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        tile_layout = QHBoxLayout(tile)
+        tile_layout.setContentsMargins(14, 14, 14, 14)
+        tile_layout.setSpacing(12)
+
+        icon_label = QLabel(icon)
+        icon_label.setObjectName("TabTileIcon")
+        icon_label.setAlignment(Qt.AlignCenter)
+        icon_label.setFixedSize(40, 40)
+
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(3)
+
+        title_label = QLabel(title)
+        title_label.setObjectName("TabTileTitle")
+        desc_label = QLabel(description)
+        desc_label.setObjectName("TabTileDescription")
+        desc_label.setWordWrap(True)
+
+        content_layout.addWidget(title_label)
+        content_layout.addWidget(desc_label)
+        tile_layout.addWidget(icon_label)
+        tile_layout.addWidget(content, 1)
+
+        return tile
+
+    def create_output_panel(self):
         output_group = QGroupBox("Operation Output")
         output_layout = QVBoxLayout(output_group)
         output_layout.setSpacing(8)
@@ -213,7 +284,7 @@ class FileChunkerUI(QMainWindow):
         copy_row.addWidget(self.copy_output_btn)
         output_layout.addLayout(copy_row)
 
-        self.main_layout.addWidget(output_group)
+        return output_group
 
     def add_hint(self, layout, text):
         hint = QLabel(text)
@@ -483,9 +554,55 @@ class FileChunkerUI(QMainWindow):
                 background: $accent;
                 border-radius: 5px;
             }
+            QWidget#Dashboard {
+                background: transparent;
+            }
+            QLabel#TileIcon {
+                font-size: 18pt;
+                color: $button;
+                background: rgba(15, 159, 143, 0.12);
+                border-radius: 20px;
+                min-width: 40px;
+                min-height: 40px;
+                max-width: 40px;
+                max-height: 40px;
+            }
+            QLabel#TabTileTitle {
+                color: $text;
+                font-size: 11pt;
+                font-weight: 700;
+            }
+            QLabel#TabTileDescription {
+                color: $muted;
+                font-size: 9pt;
+            }
+            QFrame#TabTile {
+                border: 1px solid $border_soft;
+                border-radius: 14px;
+                background: $panel_alt;
+            }
+            QFrame#TabTile:hover {
+                border-color: $button;
+            }
+            QLabel#DropArea {
+                border: 2px dashed $border_soft;
+                border-radius: 12px;
+                background: $panel_alt;
+                color: $muted;
+            }
+            QLabel#DropArea {
+                border: 2px dashed $border_soft;
+                border-radius: 12px;
+                background: $panel_alt;
+                color: $muted;
+            }
+            QLabel#DropArea:hover {
+                border-color: $button;
+                background: $panel;
+            }
         """
-        # replace tokens with palette values
-        for k, v in c.items():
+        # replace tokens with palette values, processing longer keys first to avoid partial replacement collisions
+        for k, v in sorted(c.items(), key=lambda item: -len(item[0])):
             css = css.replace(f"${k}", v)
         self.setStyleSheet(css)
         
@@ -502,10 +619,19 @@ class FileChunkerUI(QMainWindow):
         # File selection
         file_group = QGroupBox("File to Split")
         file_layout = QVBoxLayout(file_group)
-        
+        file_layout.setSpacing(12)
+
         self.split_file_path = QLineEdit()
         self.split_file_path.setPlaceholderText("Select a file to split...")
         self.split_file_path.setToolTip("Pick a single file to split into chunks.")
+
+        self.split_drop_area = DropArea(
+            "Drag & drop a file here",
+            "Or browse to choose a file for splitting.",
+            self
+        )
+        self.split_drop_area.fileDropped.connect(self.handle_split_drop)
+        file_layout.addWidget(self.split_drop_area)
         self.add_path_row(
             file_layout,
             self.split_file_path,
@@ -549,6 +675,11 @@ class FileChunkerUI(QMainWindow):
         split_btn.setObjectName("PrimaryButton")
         split_btn.clicked.connect(self.start_split)
         
+        layout.addWidget(self.build_tab_tile(
+            "Split Files",
+            "Break large files into manageable chunks with a single tap.",
+            "✂"
+        ))
         layout.addWidget(file_group)
         layout.addWidget(output_dir_group)
         layout.addWidget(chunk_group)
@@ -595,6 +726,14 @@ class FileChunkerUI(QMainWindow):
         chunks_group = QGroupBox("Chunks to Merge")
         chunks_layout = QVBoxLayout(chunks_group)
         
+        self.merge_drop_area = DropArea(
+            "Drag & drop chunk files here",
+            "Drop one or more chunk files to prepare them for merging.",
+            self
+        )
+        self.merge_drop_area.fileDropped.connect(self.handle_merge_drop)
+        chunks_layout.addWidget(self.merge_drop_area)
+
         self.chunks_list = QListWidget()
         self.chunks_list.setSelectionMode(QListWidget.MultiSelection)
         self.chunks_list.setMinimumHeight(120)
@@ -629,6 +768,11 @@ class FileChunkerUI(QMainWindow):
         merge_btn.setObjectName("PrimaryButton")
         merge_btn.clicked.connect(self.start_merge)
         
+        layout.addWidget(self.build_tab_tile(
+            "Merge Chunks",
+            "Reassemble chunked files back into their original form.",
+            "🔗"
+        ))
         layout.addWidget(output_group)
         layout.addWidget(merge_output_dir_group)
         layout.addWidget(chunks_group)
@@ -646,9 +790,19 @@ class FileChunkerUI(QMainWindow):
         # Directory selection
         dir_group = QGroupBox("Directory")
         dir_layout = QVBoxLayout(dir_group)
-        
+        dir_layout.setSpacing(12)
+
         self.auto_dir_path = QLineEdit()
         self.auto_dir_path.setPlaceholderText("Select a directory...")
+
+        self.auto_drop_area = DropArea(
+            "Drag & drop a folder here",
+            "Drop a directory to run auto split or auto merge tasks.",
+            self
+        )
+        self.auto_drop_area.fileDropped.connect(self.handle_auto_drop)
+        dir_layout.addWidget(self.auto_drop_area)
+
         self.add_path_row(
             dir_layout,
             self.auto_dir_path,
@@ -701,6 +855,11 @@ class FileChunkerUI(QMainWindow):
         auto_merge_btn.setObjectName("AccentButton")
         auto_merge_btn.clicked.connect(self.start_auto_merge)
         
+        layout.addWidget(self.build_tab_tile(
+            "Auto Operations",
+            "Run batch split or merge workflows across folders.",
+            "⚡"
+        ))
         layout.addWidget(dir_group)
         layout.addWidget(auto_output_dir_group)
         layout.addWidget(auto_chunk_group)
@@ -739,7 +898,33 @@ class FileChunkerUI(QMainWindow):
         dir_path = QFileDialog.getExistingDirectory(self, "Select Output Directory")
         if dir_path:
             line_edit.setText(dir_path)
-    
+
+    def handle_split_drop(self, paths):
+        path = paths[0]
+        if os.path.isfile(path):
+            self.split_file_path.setText(path)
+            self.update_status("File dropped for split.")
+        else:
+            QMessageBox.warning(self, "Invalid item", "Please drop a valid file to split.")
+
+    def handle_merge_drop(self, paths):
+        valid_paths = [path for path in paths if os.path.isfile(path)]
+        if valid_paths:
+            self.chunks_list.clear()
+            for path in sorted(valid_paths):
+                self.chunks_list.addItem(path)
+            self.update_status("Chunk files added via drag and drop.")
+        else:
+            QMessageBox.warning(self, "Invalid items", "Please drop valid chunk files.")
+
+    def handle_auto_drop(self, paths):
+        path = paths[0]
+        if os.path.isdir(path):
+            self.auto_dir_path.setText(path)
+            self.update_status("Directory dropped for auto operations.")
+        else:
+            QMessageBox.warning(self, "Invalid item", "Please drop a valid directory for auto operations.")
+
     def start_split(self):
         file_path = self.split_file_path.text()
         if not file_path:
